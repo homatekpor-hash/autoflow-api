@@ -1,0 +1,639 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  BRANCH_MANAGER
+  SERVICE_ADVISOR
+  TECHNICIAN
+  CASHIER
+  PARTS_MANAGER
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  INACTIVE
+}
+
+enum JobStatus {
+  RECEIVED
+  DIAGNOSING
+  WAITING_APPROVAL
+  WAITING_PARTS
+  IN_PROGRESS
+  QC
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum JobPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  VOID
+}
+
+enum ItemType {
+  LABOUR
+  PARTS
+}
+
+enum NoteType {
+  INTERNAL
+  SUPERVISOR
+  CUSTOMER
+}
+
+enum TimeEntryStatus {
+  RUNNING
+  PAUSED
+  STOPPED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String?
+  role         Role
+  status       UserStatus @default(INVITED)
+  workshopId   String?
+  workshop     Workshop?  @relation("WorkshopMembers", fields: [workshopId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  ownedWorkshops    Workshop[]         @relation("WorkshopOwner")
+  managedWorkshops  Workshop[]         @relation("WorkshopManager")
+  assignedJobs      Job[]              @relation("TechnicianJobs")
+  advisorJobs       Job[]              @relation("AdvisorJobs")
+  statusChanges     JobStatusHistory[]
+  createdEstimates  Estimate[]
+  notes             JobNote[]
+  timeEntries       TimeEntry[]
+  TechnicianProfile TechnicianProfile?
+
+  @@index([email])
+  @@index([workshopId])
+}
+
+model Workshop {
+  id        String   @id @default(cuid())
+  name      String
+  location  String
+  phone     String?
+  active    Boolean  @default(true)
+  ownerId   String?
+  owner     User?    @relation("WorkshopOwner", fields: [ownerId], references: [id])
+  managerId String?
+  manager   User?    @relation("WorkshopManager", fields: [managerId], references: [id])
+  qrToken   String   @unique @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members User[] @relation("WorkshopMembers")
+  jobs    Job[]
+  bays    Bay[]
+
+  @@index([qrToken])
+  @@index([ownerId])
+}
+
+model Bay {
+  id           String   @id @default(cuid())
+  workshopId   String
+  workshop     Workshop @relation(fields: [workshopId], references: [id])
+  name         String
+  type         String   @default("Lift")
+  isActive     Boolean  @default(true)
+  currentJobId String?
+  currentJob   Job?     @relation("BayJob", fields: [currentJobId], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([workshopId])
+}
+
+model Vehicle {
+  id        String   @id @default(cuid())
+  plate     String   @unique
+  make      String?
+  model     String?
+  year      Int?
+  color     String?
+  vin       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs Job[]
+
+  @@index([plate])
+}
+
+model Job {
+  id                 String      @id @default(cuid())
+  jobRef             String      @unique
+  workshopId         String
+  workshop           Workshop    @relation(fields: [workshopId], references: [id])
+  vehicleId          String
+  vehicle            Vehicle     @relation(fields: [vehicleId], references: [id])
+  mileage            Int
+  fuelLevel          Int         @default(5)
+  customerName       String
+  customerPhone      String?
+  complaint          String
+  advisorNotes       String?
+  priority           JobPriority @default(NORMAL)
+  status             JobStatus   @default(RECEIVED)
+  technicianId       String?
+  technician         User?       @relation("TechnicianJobs", fields: [technicianId], references: [id])
+  serviceAdvisorId   String?
+  serviceAdvisor     User?       @relation("AdvisorJobs", fields: [serviceAdvisorId], references: [id])
+  estimatedMinutes   Int?
+  expectedCompletion DateTime?
+  towingRequired     Boolean     @default(false)
+  towingFrom         String?
+  insurancePolicyNo  String?
+  isAccidentCase     Boolean     @default(false)
+  customerSignature  String?
+  damageSpots        Json        @default("[]")
+  photos             Json        @default("[]")
+  accessories        Json        @default("{}")
+  trackingToken      String      @unique @default(cuid())
+  completedAt        DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  statusHistory JobStatusHistory[]
+  notes         JobNote[]
+  tasks         JobTask[]
+  timeEntries   TimeEntry[]
+  estimate      Estimate?
+  invoice       Invoice?
+  bay           Bay[]              @relation("BayJob")
+
+  @@index([workshopId])
+  @@index([vehicleId])
+  @@index([status])
+  @@index([trackingToken])
+}
+
+model JobTask {
+  id             String   @id @default(cuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  assignedToId   String?
+  estimatedHours Float    @default(0)
+  actualHours    Float    @default(0)
+  isDone         Boolean  @default(false)
+  dependsOnId    String?
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([jobId])
+}
+
+model JobNote {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
+  type      NoteType @default(INTERNAL)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model TimeEntry {
+  id        String          @id @default(cuid())
+  jobId     String
+  job       Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  techId    String
+  tech      User            @relation(fields: [techId], references: [id])
+  status    TimeEntryStatus @default(RUNNING)
+  startedAt DateTime        @default(now())
+  pausedAt  DateTime?
+  stoppedAt DateTime?
+  totalMins Int             @default(0)
+  createdAt DateTime        @default(now())
+
+  @@index([jobId])
+  @@index([techId])
+}
+
+model JobStatusHistory {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status      JobStatus
+  note        String?
+  changedById String?
+  changedBy   User?     @relation(fields: [changedById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([jobId])
+}
+
+model Estimate {
+  id              String         @id @default(cuid())
+  jobId           String         @unique
+  job             Job            @relation(fields: [jobId], references: [id])
+  status          EstimateStatus @default(DRAFT)
+  taxRate         Float          @default(0.125)
+  subtotal        Float          @default(0)
+  tax             Float          @default(0)
+  total           Float          @default(0)
+  discountType    String         @default("pct")
+  discountValue   Float          @default(0)
+  currency        String         @default("GHS")
+  currentVersion  Int            @default(1)
+  partialApproval Boolean        @default(false)
+  token           String         @unique @default(cuid())
+  createdById     String?
+  createdBy       User?          @relation(fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items    EstimateItem[]
+  versions EstimateVersion[]
+  invoice  Invoice?
+
+  @@index([jobId])
+}
+
+model EstimateItem {
+  id          String   @id @default(cuid())
+  estimateId  String
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  type        ItemType
+  description String
+  quantity    Float
+  rate        Float
+  total       Float
+
+  @@index([estimateId])
+}
+
+model EstimateVersion {
+  id            String         @id @default(cuid())
+  estimateId    String
+  version       Int
+  items         Json
+  subtotal      Float
+  discountValue Float          @default(0)
+  tax           Float
+  total         Float
+  currency      String         @default("GHS")
+  status        EstimateStatus @default(DRAFT)
+  sentAt        DateTime?
+  note          String?
+  createdAt     DateTime       @default(now())
+  Estimate      Estimate       @relation(fields: [estimateId], references: [id])
+
+  @@unique([estimateId, version])
+  @@index([estimateId])
+}
+
+model EstimateTemplate {
+  id          String   @id @default(cuid())
+  workshopId  String?
+  name        String
+  description String?
+  isGlobal    Boolean  @default(false)
+  items       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workshopId])
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  jobId      String        @unique
+  job        Job           @relation(fields: [jobId], references: [id])
+  estimateId String        @unique
+  estimate   Estimate      @relation(fields: [estimateId], references: [id])
+  subtotal   Float
+  tax        Float
+  total      Float
+  status     InvoiceStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  paidAt     DateTime?
+
+  @@index([jobId])
+}
+
+model Part {
+  id          String    @id @default(cuid())
+  workshopId  String?
+  sku         String    @unique
+  name        String
+  category    String
+  brand       String?
+  type        String    @default("Aftermarket")
+  barcode     String?   @unique
+  description String?
+  costPrice   Float
+  sellPrice   Float
+  qty         Int       @default(0)
+  minQty      Int       @default(5)
+  maxQty      Int       @default(50)
+  binLocation String?
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  movements    StockMovement[]
+  reservations PartReservation[]
+  poItems      PurchaseOrderItem[]
+
+  @@index([workshopId])
+  @@index([sku])
+  @@index([category])
+  @@index([barcode])
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  leadDays  Int      @default(3)
+  rating    Int      @default(3)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parts          Part[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([name])
+}
+
+model StockMovement {
+  id          String   @id @default(cuid())
+  partId      String
+  part        Part     @relation(fields: [partId], references: [id])
+  type        String
+  qty         Int
+  qtyBefore   Int
+  qtyAfter    Int
+  jobId       String?
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([partId])
+  @@index([jobId])
+}
+
+model PartReservation {
+  id        String   @id @default(cuid())
+  partId    String
+  part      Part     @relation(fields: [partId], references: [id])
+  jobId     String
+  qty       Int
+  status    String   @default("RESERVED")
+  createdAt DateTime @default(now())
+
+  @@index([partId])
+  @@index([jobId])
+}
+
+model PurchaseOrder {
+  id          String    @id @default(cuid())
+  poRef       String    @unique @default(cuid())
+  supplierId  String
+  supplier    Supplier  @relation(fields: [supplierId], references: [id])
+  workshopId  String?
+  status      String    @default("DRAFT")
+  totalAmount Float     @default(0)
+  notes       String?
+  orderedAt   DateTime?
+  receivedAt  DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items PurchaseOrderItem[]
+
+  @@index([supplierId])
+  @@index([workshopId])
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(cuid())
+  poId        String
+  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  partId      String
+  part        Part          @relation(fields: [partId], references: [id])
+  qty         Int
+  unitCost    Float
+  totalCost   Float
+  receivedQty Int           @default(0)
+
+  @@index([poId])
+  @@index([partId])
+}
+
+model TechnicianProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  skills          Json      @default("[]")
+  specializations Json      @default("[]")
+  shift           String?
+  commissionRate  Float     @default(10)
+  points          Int       @default(0)
+  level           String    @default("Bronze")
+  streak          Int       @default(0)
+  lastActiveDate  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  certifications TechCertification[]
+  attendance     TechAttendance[]
+  Attendance     Attendance[]
+  TechTimeEntry  TechTimeEntry[]
+  TrainingItem   TrainingItem[]
+
+  @@index([userId])
+}
+
+model TechCertification {
+  id         String            @id @default(cuid())
+  profileId  String
+  profile    TechnicianProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name       String
+  issuedDate DateTime
+  expiryDate DateTime
+  issuedBy   String?
+  status     String            @default("valid")
+  createdAt  DateTime          @default(now())
+
+  @@index([profileId])
+}
+
+model TechAttendance {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     TechnicianProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  date        DateTime
+  status      String
+  clockIn     DateTime?
+  clockOut    DateTime?
+  hoursWorked Float?
+  note        String?
+  createdAt   DateTime          @default(now())
+
+  @@unique([profileId, date])
+  @@index([profileId])
+}
+
+model Attendance {
+  id         String            @id @default(cuid())
+  profileId  String
+  profile    TechnicianProfile @relation(fields: [profileId], references: [id])
+  date       DateTime          @db.Date
+  clockIn    DateTime?
+  clockOut   DateTime?
+  breakMins  Int               @default(0)
+  totalHours Float             @default(0)
+  status     String            @default("ABSENT")
+  createdAt  DateTime          @default(now())
+
+  @@unique([profileId, date])
+  @@index([profileId])
+}
+
+model TechTimeEntry {
+  id        String            @id @default(cuid())
+  profileId String
+  profile   TechnicianProfile @relation(fields: [profileId], references: [id])
+  jobId     String?
+  startedAt DateTime          @default(now())
+  stoppedAt DateTime?
+  totalMins Int               @default(0)
+  note      String?
+  createdAt DateTime          @default(now())
+
+  @@index([profileId])
+}
+
+model TrainingItem {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     TechnicianProfile @relation(fields: [profileId], references: [id])
+  name        String
+  provider    String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  isDone      Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+
+  @@index([profileId])
+}
+
+model Commission {
+  id         String    @id @default(cuid())
+  userId     String
+  workshopId String?
+  jobId      String?
+  amount     Float
+  rate       Float
+  baseAmount Float
+  month      Int
+  year       Int
+  isPaid     Boolean   @default(false)
+  paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([month, year])
+}
+
+model JobPhoto {
+  id           String   @id @default(cuid())
+  jobId        String
+  type         String
+  url          String
+  caption      String?
+  takenAt      DateTime @default(now())
+  uploadedById String?
+
+  @@index([jobId])
+}
+
+model FeedbackSurvey {
+  id            String   @id @default(cuid())
+  jobId         String   @unique
+  customerId    String?
+  npsScore      Int?
+  satisfaction  Int?
+  timeliness    Int?
+  comment       String?
+  pointsAwarded Int      @default(0)
+  submittedAt   DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model ReferralCode {
+  id             String   @id @default(cuid())
+  userId         String?
+  customerPhone  String?
+  code           String   @unique
+  totalReferrals Int      @default(0)
+  totalEarned    Float    @default(0)
+  points         Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  referrals Referral[]
+
+  @@index([code])
+}
+
+model Referral {
+  id            String       @id @default(cuid())
+  codeId        String
+  code          ReferralCode @relation(fields: [codeId], references: [id])
+  referredPhone String?
+  jobId         String?
+  rewardAmount  Float        @default(25)
+  pointsAwarded Int          @default(50)
+  isPaid        Boolean      @default(false)
+  paidAt        DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([codeId])
+}
