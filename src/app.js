@@ -17,7 +17,7 @@ const app = express();
 
 // ─── Global middleware ────────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || "*", credentials: true }));
+app.use(cors({ origin: true || "*", credentials: true }));
 app.use(express.json());
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
@@ -60,3 +60,4 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
+
