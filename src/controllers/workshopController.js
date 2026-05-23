@@ -72,7 +72,7 @@ async function update(req, res, next) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     const { name, location, phone, managerId } = req.body;
-    const ws = await prisma.workshop.update({ where: { id: req.params.id }, data: { name, location, phone, managerId } });
+    const ws = await prisma.workshop.update({ where: { id: req.params.id }, data: { name, location, phone, managerId, ...(req.body.ownerId && { ownerId: req.body.ownerId }) } });
     res.json(ws);
   } catch (err) { next(err); }
 }
@@ -95,3 +95,4 @@ async function getQRCode(req, res, next) {
 }
 
 module.exports = { list, get, create, update, getQRCode };
+
