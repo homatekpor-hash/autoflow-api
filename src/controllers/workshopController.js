@@ -9,7 +9,7 @@ async function list(req, res, next) {
     const role = req.user.role;
     const wsId = req.user.workshopId;
 
-    const where = (role === "SUPER_ADMIN" || role === "OWNER" || !wsId)
+    const where = (role === "SUPER_ADMIN" || !wsId)
       ? {}
       : { id: wsId };
 
@@ -95,4 +95,5 @@ async function getQRCode(req, res, next) {
 }
 
 module.exports = { list, get, create, update, getQRCode };
+
 
