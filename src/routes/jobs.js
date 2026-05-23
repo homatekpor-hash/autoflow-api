@@ -38,3 +38,20 @@ router.post("/:id/notes", authenticate, async (req, res, next) => {
     res.status(201).json(note);
   } catch(err) { next(err); }
 });
+
+// Public job tracker - no auth required
+router.get("/track/:jobRef", async (req, res, next) => {
+  try {
+    const job = await prisma.job.findFirst({
+      where: { jobRef: req.params.jobRef.toUpperCase() },
+      select: {
+        id:true, jobRef:true, status:true, customerName:true,
+        vehicle: { select: { make:true, model:true, plate:true, year:true } },
+        workshop: { select: { name:true, location:true, phone:true } },
+        createdAt:true, updatedAt:true,
+      },
+    });
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.json(job);
+  } catch (err) { next(err); }
+});
