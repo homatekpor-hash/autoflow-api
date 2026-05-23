@@ -9,9 +9,9 @@ async function list(req, res, next) {
     const role = req.user.role;
     const wsId = req.user.workshopId;
 
-    const where = (role === "SUPER_ADMIN" || !wsId)
-      ? {}
-      : { id: wsId };
+    let where = {};
+    if (role === "OWNER") { where = { ownerId: req.user.id }; }
+    else if (role !== "SUPER_ADMIN" && wsId) { where = { id: wsId }; }
 
     const workshops = await prisma.workshop.findMany({
       where,
@@ -95,5 +95,6 @@ async function getQRCode(req, res, next) {
 }
 
 module.exports = { list, get, create, update, getQRCode };
+
 
 
