@@ -1,3 +1,4 @@
+const { notifyJobStatus } = require("../utils/sms");
 const { validationResult } = require("express-validator");
 const prisma = require("../config/database");
 
@@ -79,6 +80,9 @@ async function updateStatus(req, res, next) {
       const { notifyJobStatusChanged } = require("../utils/whatsapp");
       notifyJobStatusChanged(job, status).catch(() => {});
     } catch {}
+
+    // Send SMS notification
+    try { notifyJobStatus(job, status).catch(()=>{}); } catch {}
 
     res.json(job);
   } catch (err) { next(err); }
