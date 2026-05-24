@@ -34,7 +34,7 @@ router.post("/:token", async (req, res) => {
     let vehicle = await prisma.vehicle.findFirst({ where: { plate: plate.toUpperCase() } });
     if (!vehicle) {
       vehicle = await prisma.vehicle.create({
-        data: { plate: plate.toUpperCase(), make, model, year: year ? parseInt(year) : null, color, ownerName: customerName, ownerPhone: customerPhone, ownerEmail: customerEmail || null },
+        data: { plate: plate.toUpperCase(), make, model, year: year ? parseInt(year) : null, color: color || null },
       });
     }
 
@@ -69,5 +69,6 @@ router.post("/:token", async (req, res) => {
 });
 
 module.exports = router;
+
 
 
