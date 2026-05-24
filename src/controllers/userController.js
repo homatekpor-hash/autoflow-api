@@ -80,10 +80,12 @@ async function invite(req, res, next) {
 // ─── PUT /api/users/:id ───────────────────────────────────────────────────────
 async function update(req, res, next) {
   try {
-    const { name, role, status } = req.body;
+    const { name, role, status, password } = req.body;
+    let passwordHash;
+    if (password) { const bcrypt = require("bcryptjs"); passwordHash = await bcrypt.hash(password, 12); }
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: { ...(name && { name }), ...(role && { role }), ...(status && { status }) },
+      data: { ...(name && { name }), ...(role && { role }), ...(status && { status }), ...(passwordHash && { passwordHash }) },
       select: { id: true, name: true, email: true, role: true, status: true, workshopId: true },
     });
     res.json(user);
@@ -102,3 +104,4 @@ async function me(req, res, next) {
 }
 
 module.exports = { list, invite, update, me };
+
