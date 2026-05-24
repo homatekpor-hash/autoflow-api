@@ -68,3 +68,17 @@ router.put("/:id/assign", authenticate, requireRole("SUPER_ADMIN","OWNER","BRANC
     res.json(job);
   } catch(err) { next(err); }
 });
+
+// Customer rating submission (public)
+router.post("/:id/rate", async (req, res, next) => {
+  try {
+    const { score, comment } = req.body;
+    if (!score || score < 1 || score > 10) return res.status(400).json({ error: "Score must be between 1 and 10" });
+    const job = await prisma.job.findUnique({ where: { id: req.params.id }, include: { workshop: true } });
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    const review = await prisma.customerReview.create({
+      data: { jobId: job.id, workshopId: job.workshopId, score: parseInt(score), comment: comment||null, customerName: job.customerName },
+    });
+    res.status(201).json(review);
+  } catch(err) { next(err); }
+});
