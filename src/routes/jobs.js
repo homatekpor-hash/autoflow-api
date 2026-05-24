@@ -74,11 +74,35 @@ router.post("/:id/rate", async (req, res, next) => {
   try {
     const { score, comment } = req.body;
     if (!score || score < 1 || score > 10) return res.status(400).json({ error: "Score must be between 1 and 10" });
-    const job = await prisma.job.findUnique({ where: { id: req.params.id }, include: { workshop: true } });
+    const job = await prisma.job.findUnique({ where: { id: req.params.id } });
     if (!job) return res.status(404).json({ error: "Job not found" });
-    const review = await prisma.customerReview.create({
-      data: { jobId: job.id, workshopId: job.workshopId, score: parseInt(score), comment: comment||null, customerName: job.customerName },
+    // Store rating as a job note
+    const note = await prisma.jobNote.create({
+      data: { jobId: job.id, content: `⭐ Customer rating: ${score}/10${comment ? " — " + comment : ""}`, isInternal: false },
     });
-    res.status(201).json(review);
+    res.status(201).json({ score, comment, jobId: job.id });
+  } catch(err) { next(err); }
+});
+
+// Get job photos
+router.get("/:id/photos", authenticate, async (req, res, next) => {
+  try {
+    const photos = await prisma.jobPhoto.findMany({
+      where: { jobId: req.params.id },
+      orderBy: { takenAt: "asc" },
+    });
+    res.json(photos);
+  } catch(err) { next(err); }
+});
+
+// Add job photo (base64)
+router.post("/:id/photos", authenticate, async (req, res, next) => {
+  try {
+    const { url, type, caption } = req.body;
+    if (!url) return res.status(400).json({ error: "Photo URL required" });
+    const photo = await prisma.jobPhoto.create({
+      data: { jobId: req.params.id, url, type: type||"OTHER", caption: caption||null, uploadedById: req.user.id },
+    });
+    res.status(201).json(photo);
   } catch(err) { next(err); }
 });

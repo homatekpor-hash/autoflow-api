@@ -10,7 +10,16 @@ router.get("/performance", authenticate, requireRole("SUPER_ADMIN","OWNER","BRAN
 module.exports = router;
 
 // CSV export
-router.get("/export", authenticate, requireRole("SUPER_ADMIN","OWNER","BRANCH_MANAGER"), async (req, res, next) => {
+router.get("/export", async (req, res, next) => {
+  try {
+    const token = req.query.token;
+    if (token) {
+      const jwt = require("jsonwebtoken");
+      const payload = jwt.verify(token, process.env.JWT_SECRET || "autoflow-ghana-super-secret-2026");
+      req.user = { id: payload.sub || payload.userId, role: payload.role || "SUPER_ADMIN" };
+    }
+  } catch {}
+  authenticate(req, res, async () => { requireRole("SUPER_ADMIN","OWNER","BRANCH_MANAGER"), async (req, res, next) => {
   try {
     const { type = "revenue" } = req.query;
     const invoices = await prisma.invoice.findMany({
