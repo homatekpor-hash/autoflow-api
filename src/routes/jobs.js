@@ -55,3 +55,16 @@ router.get("/track/:jobRef", async (req, res, next) => {
     res.json(job);
   } catch (err) { next(err); }
 });
+
+// Assign technician
+router.put("/:id/assign", authenticate, requireRole("SUPER_ADMIN","OWNER","BRANCH_MANAGER","SERVICE_ADVISOR"), async (req, res, next) => {
+  try {
+    const { technicianId } = req.body;
+    const job = await prisma.job.update({
+      where: { id: req.params.id },
+      data: { technicianId: technicianId || null },
+      include: { technician: { select: { id:true, name:true } } },
+    });
+    res.json(job);
+  } catch(err) { next(err); }
+});
