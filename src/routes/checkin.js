@@ -15,7 +15,7 @@ router.get("/workshop/:token", async (req, res) => {
 });
 
 // POST /api/checkin/:token — submit customer intake (public)
-router.post("/checkin/:token", async (req, res) => {
+router.post("/:token", async (req, res) => {
   try {
     const ws = await prisma.workshop.findUnique({ where: { qrToken: req.params.token } });
     if (!ws) return res.status(404).json({ error: "Workshop not found" });
@@ -69,4 +69,5 @@ router.post("/checkin/:token", async (req, res) => {
 });
 
 module.exports = router;
+
 
