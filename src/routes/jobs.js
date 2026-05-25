@@ -106,3 +106,21 @@ router.post("/:id/photos", authenticate, async (req, res, next) => {
     res.status(201).json(photo);
   } catch(err) { next(err); }
 });
+
+// Auto-escalate stale jobs (jobs waiting > 24hrs)
+router.post("/escalate", authenticate, requireRole("SUPER_ADMIN","OWNER","BRANCH_MANAGER"), async (req, res, next) => {
+  try {
+    const threshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const staleJobs = await prisma.job.findMany({
+      where: {
+        status: { in: ["RECEIVED","DIAGNOSING","WAITING_PARTS"] },
+        priority: { not: "URGENT" },
+        updatedAt: { lt: threshold },
+      },
+    });
+    const updated = await Promise.all(staleJobs.map(j =>
+      prisma.job.update({ where: { id: j.id }, data: { priority: "HIGH" } })
+    ));
+    res.json({ escalated: updated.length, jobs: updated.map(j=>j.jobRef) });
+  } catch(err) { next(err); }
+});
