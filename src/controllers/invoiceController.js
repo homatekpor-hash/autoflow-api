@@ -26,7 +26,7 @@ async function create(req, res, next) {
     const invNum = `INV-${prefix}-${String(count+1).padStart(4,"0")}`;
 
     const invoice = await prisma.invoice.create({
-      data: { jobId: job.id, estimateId: job.estimate.id, invoiceNumber: invNum, subtotal, tax: vat, total, status: "PENDING" },
+      data: { jobId: job.id, estimateId: job.estimate.id, subtotal, tax: vat, total, status: "PENDING" },
     });
 
     await prisma.job.update({ where: { id: job.id }, data: { status: "READY" } });
@@ -80,6 +80,7 @@ async function list(req, res, next) {
 }
 
 module.exports = { create, markPaid, getByJob, list };
+
 
 
 
