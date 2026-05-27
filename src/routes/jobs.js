@@ -124,3 +124,19 @@ router.post("/escalate", authenticate, requireRole("SUPER_ADMIN","OWNER","BRANCH
     res.json({ escalated: updated.length, jobs: updated.map(j=>j.jobRef) });
   } catch(err) { next(err); }
 });
+
+// Customer portal - get jobs by phone (public)
+router.get("/customer", async (req, res, next) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) return res.status(400).json({ error: "Phone required" });
+    const cleaned = String(phone).replace(/\D/g,"");
+    const variants = [cleaned, "0"+cleaned.slice(-9), "233"+cleaned.slice(-9)];
+    const jobs = await prisma.job.findMany({
+      where: { customerPhone: { in: variants } },
+      include: { vehicle: true, workshop: { select: { name:true, location:true } }, invoice: { select: { status:true, total:true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(jobs);
+  } catch(err) { next(err); }
+});
