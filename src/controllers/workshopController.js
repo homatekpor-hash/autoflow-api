@@ -6,37 +6,44 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 async function list(req, res, next) {
   try {
-    const role = req.user.role;
-    const wsId = req.user.workshopId;
+    const { role, id: userId, workshopId } = req.user;
 
     let where = {};
-    if (role === "OWNER") { where = { ownerId: req.user.id }; }
-    else if (role !== "SUPER_ADMIN" && wsId) { where = { id: wsId }; }
+    if (role === "SUPER_ADMIN") {
+      where = {};                           // sees ALL
+    } else if (role === "OWNER") {
+      where = { ownerId: userId };          // sees only workshops they own
+    } else if (workshopId) {
+      where = { id: workshopId };           // sees only their branch
+    } else {
+      return res.json([]);
+    }
 
     const workshops = await prisma.workshop.findMany({
       where,
       include: {
         manager: { select: { id: true, name: true, email: true } },
-        _count: { select: { members: true, jobs: true } },
+        _count:  { select: { members: true, jobs: true } },
+        qrToken: true,
       },
       orderBy: { name: "asc" },
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const wsIds = workshops.map(w => w.id);
 
-    const enriched = await Promise.all(
-      workshops.map(async (ws) => {
-        const [active, completed, revenue] = await Promise.all([
-          prisma.job.count({ where: { workshopId: ws.id, createdAt: { gte: today }, status: { notIn: ["DELIVERED","CANCELLED"] } } }),
-          prisma.job.count({ where: { workshopId: ws.id, createdAt: { gte: today }, status: "DELIVERED" } }),
-          prisma.invoice.aggregate({ where: { job: { workshopId: ws.id }, createdAt: { gte: today } }, _sum: { total: true } }),
-        ]);
-        return { ...ws, stats: { active, completed, revenueToday: revenue._sum.total || 0 } };
-      })
-    );
+    const [activeJobs, completedJobs] = wsIds.length ? await Promise.all([
+      prisma.job.groupBy({ by: ["workshopId"], where: { workshopId: { in: wsIds }, createdAt: { gte: today }, status: { notIn: ["DELIVERED","CANCELLED"] } }, _count: { id: true } }),
+      prisma.job.groupBy({ by: ["workshopId"], where: { workshopId: { in: wsIds }, createdAt: { gte: today }, status: "DELIVERED" }, _count: { id: true } }),
+    ]) : [[], []];
 
-    res.json(enriched);
+    const activeMap    = Object.fromEntries(activeJobs.map(r => [r.workshopId, r._count.id]));
+    const completedMap = Object.fromEntries(completedJobs.map(r => [r.workshopId, r._count.id]));
+
+    res.json(workshops.map(ws => ({
+      ...ws,
+      stats: { active: activeMap[ws.id] || 0, completed: completedMap[ws.id] || 0, revenueToday: 0 },
+    })));
   } catch (err) { next(err); }
 }
 
@@ -47,11 +54,16 @@ async function get(req, res, next) {
       include: {
         manager: { select: { id: true, name: true, email: true } },
         members: { select: { id: true, name: true, role: true, status: true } },
-        _count: { select: { jobs: true } },
+        _count:  { select: { jobs: true } },
       },
     });
     if (!ws) return res.status(404).json({ error: "Workshop not found" });
-    const canAccess = ["SUPER_ADMIN","OWNER"].includes(req.user.role) || ws.id === req.user.workshopId;
+
+    const { role, id: userId, workshopId } = req.user;
+    const canAccess = role === "SUPER_ADMIN" ||
+      (role === "OWNER" && ws.ownerId === userId) ||
+      ws.id === workshopId;
+
     if (!canAccess) return res.status(403).json({ error: "Access denied" });
     res.json(ws);
   } catch (err) { next(err); }
@@ -62,7 +74,8 @@ async function create(req, res, next) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     const { name, location, phone } = req.body;
-    const ws = await prisma.workshop.create({ data: { name, location, phone } });
+    const ownerId = req.user.role === "OWNER" ? req.user.id : req.body.ownerId || null;
+    const ws = await prisma.workshop.create({ data: { name, location, phone, ownerId } });
     res.status(201).json(ws);
   } catch (err) { next(err); }
 }
@@ -72,7 +85,7 @@ async function update(req, res, next) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     const { name, location, phone, managerId } = req.body;
-    const ws = await prisma.workshop.update({ where: { id: req.params.id }, data: { name, location, phone, managerId, ...(req.body.ownerId && { ownerId: req.body.ownerId }) } });
+    const ws = await prisma.workshop.update({ where: { id: req.params.id }, data: { name, location, phone, managerId } });
     res.json(ws);
   } catch (err) { next(err); }
 }
@@ -95,8 +108,3 @@ async function getQRCode(req, res, next) {
 }
 
 module.exports = { list, get, create, update, getQRCode };
-
-
-
-
-
