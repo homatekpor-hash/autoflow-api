@@ -24,8 +24,7 @@ async function list(req, res, next) {
       include: {
         manager: { select: { id: true, name: true, email: true } },
         _count:  { select: { members: true, jobs: true } },
-        qrToken: true,
-      },
+              },
       orderBy: { name: "asc" },
     });
 
@@ -108,3 +107,4 @@ async function getQRCode(req, res, next) {
 }
 
 module.exports = { list, get, create, update, getQRCode };
+
